@@ -100,7 +100,7 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("Starting server", 
+		logger.Info("Starting server",
 			zap.String("port", cfg.Port),
 			zap.Bool("local_mode", cfg.LocalMode))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

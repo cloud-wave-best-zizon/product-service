@@ -97,7 +97,7 @@ func (r *ProductRepository) CreateTableIfNotExists(ctx context.Context) error {
 	_, err := r.client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
 		TableName: aws.String(r.tableName),
 	})
-	
+
 	if err == nil {
 		// 테이블이 이미 존재함
 		return nil
