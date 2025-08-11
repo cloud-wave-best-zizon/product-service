@@ -14,8 +14,23 @@ MSA 구조의 상품/재고 관리 서비스
 - POST /api/v1/products/{id}/deduct - 재고 차감
 - GET /api/v1/health - 헬스 체크
 
-## 실행
+# 애플리케이션 실행
 make run
+
+# 의존성 설치
+make deps
+
+# 빌드
+make build
+
+# 테스트
+make test
+
+# 코드 포맷팅
+make fmt
+
+# 도움말 보기
+make help
 
 ```
 product-service/
