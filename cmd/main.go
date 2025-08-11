@@ -29,6 +29,15 @@ func main() {
 		log.Fatal("Failed to load config:", err)
 	}
 
+	// 모드 확인
+	if cfg.LocalMode && cfg.DynamoDBEndpoint == "" {
+		logger.Info("Running in LOCAL MODE - using in-memory storage")
+	} else if cfg.DynamoDBEndpoint != "" {
+		logger.Info("Running with DynamoDB Local", zap.String("endpoint", cfg.DynamoDBEndpoint))
+	} else {
+		logger.Info("Running in AWS MODE")
+	}
+
 	// DynamoDB 클라이언트 초기화
 	dynamoClient, err := repository.NewDynamoDBClient(cfg)
 	if err != nil {
@@ -37,6 +46,17 @@ func main() {
 
 	// Repository, Service, Handler 초기화
 	productRepo := repository.NewProductRepository(dynamoClient, cfg.ProductTableName)
+
+	// DynamoDB Local 사용 시 테이블 생성
+	if dynamoClient != nil {
+		if err := productRepo.CreateTableIfNotExists(context.Background()); err != nil {
+			logger.Error("Failed to create table", zap.Error(err))
+			// 테이블이 이미 존재하는 경우는 무시
+		} else {
+			logger.Info("Table checked/created successfully")
+		}
+	}
+
 	productService := service.NewProductService(productRepo, logger)
 	productHandler := handler.NewProductHandler(productService, logger)
 
@@ -53,7 +73,23 @@ func main() {
 		v1.GET("/products/:id", productHandler.GetProduct)
 		v1.POST("/products/:id/deduct", productHandler.DeductStock)
 		v1.GET("/health", func(c *gin.Context) {
-			c.JSON(200, gin.H{"status": "healthy"})
+			status := gin.H{
+				"status": "healthy",
+				"mode":   "production",
+			}
+			if cfg.LocalMode && cfg.DynamoDBEndpoint == "" {
+				status["mode"] = "local"
+				status["storage"] = "in-memory"
+			} else if cfg.DynamoDBEndpoint != "" {
+				status["mode"] = "local"
+				status["storage"] = "dynamodb-local"
+				status["endpoint"] = cfg.DynamoDBEndpoint
+			} else {
+				status["mode"] = "aws"
+				status["storage"] = "dynamodb"
+				status["table"] = cfg.ProductTableName
+			}
+			c.JSON(200, status)
 		})
 	}
 
@@ -64,7 +100,9 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("Starting server", zap.String("port", cfg.Port))
+		logger.Info("Starting server", 
+			zap.String("port", cfg.Port),
+			zap.Bool("local_mode", cfg.LocalMode))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Failed to start server", zap.Error(err))
 		}

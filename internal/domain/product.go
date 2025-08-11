@@ -5,12 +5,12 @@ import (
 )
 
 type Product struct {
-	ProductID string    `json:"product_id"`
-	Name      string    `json:"name"`
-	Stock     int       `json:"stock"`
-	Price     float64   `json:"price"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ProductID string    `json:"product_id" dynamodbav:"product_id"`
+	Name      string    `json:"name" dynamodbav:"name"`
+	Stock     int       `json:"stock" dynamodbav:"stock"`
+	Price     float64   `json:"price" dynamodbav:"price"`
+	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" dynamodbav:"updated_at"`
 }
 
 type CreateProductRequest struct {

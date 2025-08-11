@@ -29,7 +29,7 @@ help:
 # 애플리케이션 실행 (로컬 모드)
 run:
 	@echo "$(GREEN)Starting $(APP_NAME) in local mode...$(NC)"
-	LOCAL_MODE=true $(GO) run $(MAIN_PATH)
+	LOCAL_MODE=true $(GO) run -tags local $(MAIN_PATH)
 
 # 애플리케이션 빌드
 build:
@@ -112,3 +112,32 @@ version:
 	@echo "$(GREEN)Version information:$(NC)"
 	@$(GO) version
 	@echo "App: $(APP_NAME)"
+
+# DynamoDB Local 시작
+dynamodb-start:
+	@echo "$(GREEN)Starting DynamoDB Local...$(NC)"
+	docker-compose up -d dynamodb-local dynamodb-admin
+	@echo "DynamoDB Local: http://localhost:8000"
+	@echo "DynamoDB Admin: http://localhost:8001"
+
+# DynamoDB Local 중지
+dynamodb-stop:
+	@echo "$(GREEN)Stopping DynamoDB Local...$(NC)"
+	docker-compose down
+
+# DynamoDB Local과 함께 애플리케이션 실행
+run-with-dynamodb:
+	@echo "$(GREEN)Starting with DynamoDB Local...$(NC)"
+	LOCAL_MODE=false DYNAMODB_ENDPOINT=http://localhost:8000 $(GO) run $(MAIN_PATH)
+
+# 전체 스택 실행 (DynamoDB Local + App)
+stack-up:
+	@echo "$(GREEN)Starting full stack...$(NC)"
+	@make dynamodb-start
+	@sleep 3
+	@make run-with-dynamodb
+
+# 전체 스택 중지
+stack-down:
+	@echo "$(GREEN)Stopping full stack...$(NC)"
+	@make dynamodb-stop

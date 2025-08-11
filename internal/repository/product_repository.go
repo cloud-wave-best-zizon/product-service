@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -32,14 +33,44 @@ type ProductRepository struct {
 }
 
 func NewDynamoDBClient(cfg *pkgconfig.Config) (*dynamodb.Client, error) {
-	if cfg.LocalMode {
-		// 로컬 모드에서는 nil 반환
+	if cfg.LocalMode && cfg.DynamoDBEndpoint == "" {
+		// 인메모리 모드
 		return nil, nil
 	}
 
-	awsCfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion(cfg.AWSRegion),
-	)
+	var awsCfg aws.Config
+	var err error
+
+	if cfg.DynamoDBEndpoint != "" {
+		// DynamoDB Local 사용
+		customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+			if service == dynamodb.ServiceID {
+				return aws.Endpoint{
+					URL:           cfg.DynamoDBEndpoint,
+					SigningRegion: cfg.AWSRegion,
+				}, nil
+			}
+			return aws.Endpoint{}, &aws.EndpointNotFoundError{}
+		})
+
+		awsCfg, err = config.LoadDefaultConfig(context.TODO(),
+			config.WithRegion(cfg.AWSRegion),
+			config.WithEndpointResolverWithOptions(customResolver),
+			config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
+				Value: aws.Credentials{
+					AccessKeyID:     "dummy",
+					SecretAccessKey: "dummy",
+					SessionToken:    "",
+				},
+			}),
+		)
+	} else {
+		// 실제 AWS DynamoDB 사용
+		awsCfg, err = config.LoadDefaultConfig(context.TODO(),
+			config.WithRegion(cfg.AWSRegion),
+		)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
@@ -54,6 +85,53 @@ func NewProductRepository(client *dynamodb.Client, tableName string) *ProductRep
 		localMode:  client == nil,
 		localStore: make(map[string]*domain.Product),
 	}
+}
+
+// CreateTableIfNotExists - DynamoDB Local 사용 시 테이블 생성
+func (r *ProductRepository) CreateTableIfNotExists(ctx context.Context) error {
+	if r.localMode {
+		return nil
+	}
+
+	// 테이블 존재 확인
+	_, err := r.client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
+		TableName: aws.String(r.tableName),
+	})
+	
+	if err == nil {
+		// 테이블이 이미 존재함
+		return nil
+	}
+
+	// 테이블 생성
+	_, err = r.client.CreateTable(ctx, &dynamodb.CreateTableInput{
+		TableName: aws.String(r.tableName),
+		KeySchema: []types.KeySchemaElement{
+			{
+				AttributeName: aws.String("product_id"),
+				KeyType:       types.KeyTypeHash,
+			},
+		},
+		AttributeDefinitions: []types.AttributeDefinition{
+			{
+				AttributeName: aws.String("product_id"),
+				AttributeType: types.ScalarAttributeTypeS,
+			},
+		},
+		BillingMode: types.BillingModePayPerRequest,
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+
+	// 테이블이 활성화될 때까지 대기
+	waiter := dynamodb.NewTableExistsWaiter(r.client)
+	err = waiter.Wait(ctx, &dynamodb.DescribeTableInput{
+		TableName: aws.String(r.tableName),
+	}, 30*time.Second)
+
+	return err
 }
 
 func (r *ProductRepository) CreateProduct(ctx context.Context, product *domain.Product) error {
