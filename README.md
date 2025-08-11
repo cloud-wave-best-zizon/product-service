@@ -15,7 +15,6 @@ MSA 구조의 상품/재고 관리 서비스
 - GET /api/v1/health - 헬스 체크
 
 ## 실행
-```bash
 make run
 
 ```
@@ -46,6 +45,7 @@ product-service/
     ├── service.yaml
     └── configmap.yaml
 ```
+
 
 # 프로젝트 루트 디렉토리에서 실행
 go mod download
