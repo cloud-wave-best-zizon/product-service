@@ -25,11 +25,11 @@ product-service/
 │   ├── domain/
 │   │   └── product.go
 │   ├── handler/
-│   │   └── product_handler.go
+│   │   └── product_handler.go  ← 여기로 이동
 │   ├── service/
 │   │   └── product_service.go
 │   └── repository/
-│       └── product_repository.go
+│       └── product_repository.go  ← 올바른 내용으로 수정
 ├── pkg/
 │   ├── config/
 │   │   └── config.go
@@ -37,13 +37,7 @@ product-service/
 │       └── middleware.go
 ├── go.mod
 ├── go.sum
-├── Dockerfile
-├── Makefile
-├── README.md
-└── k8s/
-    ├── deployment.yaml
-    ├── service.yaml
-    └── configmap.yaml
+└── README.md
 ```
 
 
