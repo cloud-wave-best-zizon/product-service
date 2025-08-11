@@ -1,104 +1,210 @@
-package main
+package repository
 
 import (
     "context"
-    "log"
-    "net/http"
-    "os"
-    "os/signal"
-    "syscall"
+    "errors"
+    "fmt"
+    "sync"
     "time"
 
-    "github.com/gin-gonic/gin"
-    "github.com/cloud-wave-best-zizon/product-service/internal/handler"
-    "github.com/cloud-wave-best-zizon/product-service/internal/repository"
-    "github.com/cloud-wave-best-zizon/product-service/internal/service"
-    "github.com/cloud-wave-best-zizon/product-service/pkg/config"
-    "github.com/cloud-wave-best-zizon/product-service/pkg/middleware"
-    "go.uber.org/zap"
+    "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/config"
+    "github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+    "github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
+    "github.com/aws/aws-sdk-go-v2/service/dynamodb"
+    "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+    "github.com/cloud-wave-best-zizon/product-service/internal/domain"
+    pkgconfig "github.com/cloud-wave-best-zizon/product-service/pkg/config"
 )
 
-func main() {
-    // Logger 초기화
-    logger, _ := zap.NewProduction()
-    defer logger.Sync()
+var (
+    ErrProductNotFound   = errors.New("product not found")
+    ErrInsufficientStock = errors.New("insufficient stock")
+)
 
-    // Config 로드
-    cfg, err := config.Load()
-    if err != nil {
-        log.Fatal("Failed to load config:", err)
-    }
+type ProductRepository struct {
+    client    *dynamodb.Client
+    tableName string
+    localMode bool
+    // 로컬 모드용 인메모리 저장소
+    localStore map[string]*domain.Product
+    mu         sync.RWMutex
+}
 
-    // 로컬 모드 확인
+func NewDynamoDBClient(cfg *pkgconfig.Config) (*dynamodb.Client, error) {
     if cfg.LocalMode {
-        logger.Info("Running in LOCAL MODE - no AWS connection required")
+        // 로컬 모드에서는 nil 반환
+        return nil, nil
     }
 
-    // DynamoDB 클라이언트 초기화 (로컬 모드에서는 nil 반환)
-    dynamoClient, err := repository.NewDynamoDBClient(cfg)
+    awsCfg, err := config.LoadDefaultConfig(context.TODO(),
+        config.WithRegion(cfg.AWSRegion),
+    )
     if err != nil {
-        logger.Error("Failed to create DynamoDB client", zap.Error(err))
-        if !cfg.LocalMode {
-            log.Fatal("Cannot run without AWS in production mode")
+        return nil, fmt.Errorf("failed to load AWS config: %w", err)
+    }
+
+    return dynamodb.NewFromConfig(awsCfg), nil
+}
+
+func NewProductRepository(client *dynamodb.Client, tableName string) *ProductRepository {
+    return &ProductRepository{
+        client:     client,
+        tableName:  tableName,
+        localMode:  client == nil,
+        localStore: make(map[string]*domain.Product),
+    }
+}
+
+func (r *ProductRepository) CreateProduct(ctx context.Context, product *domain.Product) error {
+    if r.localMode {
+        r.mu.Lock()
+        defer r.mu.Unlock()
+        
+        if _, exists := r.localStore[product.ProductID]; exists {
+            return errors.New("product already exists")
         }
+        
+        r.localStore[product.ProductID] = product
+        return nil
     }
 
-    // Repository, Service, Handler 초기화
-    productRepo := repository.NewProductRepository(dynamoClient, cfg.ProductTableName)
-    productService := service.NewProductService(productRepo, logger)
-    productHandler := handler.NewProductHandler(productService, logger)
-
-    // Gin Router 설정
-    router := gin.New()
-    router.Use(gin.Recovery())
-    router.Use(middleware.Logger(logger))
-    router.Use(middleware.RequestID())
-
-    // Routes
-    v1 := router.Group("/api/v1")
-    {
-        v1.POST("/products", productHandler.CreateProduct)
-        v1.GET("/products/:id", productHandler.GetProduct)
-        v1.POST("/products/:id/deduct", productHandler.DeductStock)
-        v1.GET("/health", func(c *gin.Context) {
-            status := gin.H{
-                "status": "healthy",
-                "mode":   "production",
-            }
-            if cfg.LocalMode {
-                status["mode"] = "local"
-                status["storage"] = "in-memory"
-            }
-            c.JSON(200, status)
-        })
+    av, err := attributevalue.MarshalMap(product)
+    if err != nil {
+        return fmt.Errorf("failed to marshal product: %w", err)
     }
 
-    // Server 시작
-    srv := &http.Server{
-        Addr:    ":" + cfg.Port,
-        Handler: router,
+    _, err = r.client.PutItem(ctx, &dynamodb.PutItemInput{
+        TableName: aws.String(r.tableName),
+        Item:      av,
+    })
+
+    if err != nil {
+        return fmt.Errorf("failed to put item: %w", err)
     }
 
-    go func() {
-        logger.Info("Starting server", 
-            zap.String("port", cfg.Port),
-            zap.Bool("local_mode", cfg.LocalMode))
-        if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-            logger.Fatal("Failed to start server", zap.Error(err))
+    return nil
+}
+
+func (r *ProductRepository) GetProduct(ctx context.Context, productID string) (*domain.Product, error) {
+    if r.localMode {
+        r.mu.RLock()
+        defer r.mu.RUnlock()
+        
+        product, exists := r.localStore[productID]
+        if !exists {
+            return nil, ErrProductNotFound
         }
-    }()
-
-    // Graceful Shutdown
-    quit := make(chan os.Signal, 1)
-    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-    <-quit
-
-    logger.Info("Shutting down server...")
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
-    
-    if err := srv.Shutdown(ctx); err != nil {
-        logger.Fatal("Server forced to shutdown", zap.Error(err))
+        
+        // 깊은 복사를 위해 새 객체 생성
+        productCopy := *product
+        return &productCopy, nil
     }
-    logger.Info("Server exited")
+
+    result, err := r.client.GetItem(ctx, &dynamodb.GetItemInput{
+        TableName: aws.String(r.tableName),
+        Key: map[string]types.AttributeValue{
+            "product_id": &types.AttributeValueMemberS{Value: productID},
+        },
+    })
+
+    if err != nil {
+        return nil, fmt.Errorf("failed to get item: %w", err)
+    }
+
+    if result.Item == nil {
+        return nil, ErrProductNotFound
+    }
+
+    var product domain.Product
+    if err := attributevalue.UnmarshalMap(result.Item, &product); err != nil {
+        return nil, fmt.Errorf("failed to unmarshal product: %w", err)
+    }
+
+    return &product, nil
+}
+
+func (r *ProductRepository) DeductStock(ctx context.Context, productID string, quantity int) (newStock int, previousStock int, err error) {
+    if r.localMode {
+        r.mu.Lock()
+        defer r.mu.Unlock()
+        
+        product, exists := r.localStore[productID]
+        if !exists {
+            return 0, 0, ErrProductNotFound
+        }
+        
+        previousStock = product.Stock
+        
+        if product.Stock < quantity {
+            return 0, previousStock, ErrInsufficientStock
+        }
+        
+        product.Stock -= quantity
+        product.UpdatedAt = time.Now()
+        
+        return product.Stock, previousStock, nil
+    }
+
+    // Get current stock first
+    product, err := r.GetProduct(ctx, productID)
+    if err != nil {
+        return 0, 0, err
+    }
+    previousStock = product.Stock
+
+    // Atomic update with condition
+    update := expression.Set(
+        expression.Name("stock"),
+        expression.Minus(
+            expression.Name("stock"),
+            expression.Value(quantity),
+        ),
+    ).Set(
+        expression.Name("updated_at"),
+        expression.Value(time.Now()),
+    )
+
+    // 재고가 충분한 경우에만 업데이트
+    condition := expression.GreaterThanEqual(
+        expression.Name("stock"),
+        expression.Value(quantity),
+    )
+
+    expr, err := expression.NewBuilder().
+        WithUpdate(update).
+        WithCondition(condition).
+        Build()
+    if err != nil {
+        return 0, previousStock, err
+    }
+
+    input := &dynamodb.UpdateItemInput{
+        TableName: aws.String(r.tableName),
+        Key: map[string]types.AttributeValue{
+            "product_id": &types.AttributeValueMemberS{Value: productID},
+        },
+        ExpressionAttributeNames:  expr.Names(),
+        ExpressionAttributeValues: expr.Values(),
+        UpdateExpression:          expr.Update(),
+        ConditionExpression:       expr.Condition(),
+        ReturnValues:              types.ReturnValueAllNew,
+    }
+
+    result, err := r.client.UpdateItem(ctx, input)
+    if err != nil {
+        var ccf *types.ConditionalCheckFailedException
+        if errors.As(err, &ccf) {
+            return 0, previousStock, ErrInsufficientStock
+        }
+        return 0, previousStock, err
+    }
+
+    // 업데이트된 재고 반환
+    var updatedProduct domain.Product
+    if err := attributevalue.UnmarshalMap(result.Attributes, &updatedProduct); err != nil {
+        return 0, previousStock, err
+    }
+
+    return updatedProduct.Stock, previousStock, nil
 }
