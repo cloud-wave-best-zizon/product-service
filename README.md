@@ -46,3 +46,11 @@ product-service/
     ├── service.yaml
     └── configmap.yaml
 ```
+
+# 프로젝트 루트 디렉토리에서 실행
+go mod download
+go mod tidy
+
+# 모든 의존성 다시 다운로드
+go clean -modcache
+go mod download

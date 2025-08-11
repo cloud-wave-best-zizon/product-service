@@ -9,6 +9,7 @@ type Config struct {
     AWSRegion        string `envconfig:"AWS_REGION" default:"ap-northeast-2"`
     ProductTableName string `envconfig:"PRODUCT_TABLE_NAME" default:"products-table"`
     LogLevel         string `envconfig:"LOG_LEVEL" default:"info"`
+    LocalMode        bool   `envconfig:"LOCAL_MODE" default:"true"` // AWS 없이 로컬 실행 모드
 }
 
 func Load() (*Config, error) {
