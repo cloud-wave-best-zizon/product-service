@@ -11,6 +11,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// 보상(컴펜세이션) 이벤트 발행용 인터페이스
+type CompensationProducer interface {
+		// 재고 차감 실패 보상 이벤트 발행
+		PublishStockDeductionFailed(orderID int, productID string, qty int, reason string) error
+}
+	
 // OrderCreatedEvent는 order-service에서 발행하는 이벤트 구조체
 type OrderCreatedEvent struct {
 	EventID     string      `json:"event_id"`
@@ -36,6 +42,8 @@ type KafkaConsumer struct {
 	logger         *zap.Logger
 	ctx            context.Context
 	cancel         context.CancelFunc
+	compensationProducer CompensationProducer
+
 }
 
 func NewKafkaConsumer(brokers string, groupID string, productService *service.ProductService, logger *zap.Logger) (*KafkaConsumer, error) {
@@ -146,7 +154,6 @@ func (kc *KafkaConsumer) handleOrderCreatedEvent(event OrderCreatedEvent) error 
 
 	// 각 주문 아이템에 대해 재고 차감
 	for _, item := range event.Items {
-		// product_id를 string으로 변환 (product-service는 string 사용)
 		productID := fmt.Sprintf("PROD%03d", item.ProductID)
 		
 		kc.logger.Info("Deducting stock",
@@ -161,8 +168,21 @@ func (kc *KafkaConsumer) handleOrderCreatedEvent(event OrderCreatedEvent) error 
 				zap.Int("order_id", event.OrderID),
 				zap.Error(err))
 
-			// 재고 부족이나 상품 없음 등의 경우 보상 트랜잭션 이벤트 발행 가능
-			// TODO: 실패 시 보상 이벤트 발행 (주문 취소 등)
+			// 보상 트랜잭션 이벤트 발행
+			if kc.compensationProducer != nil {
+				reason := "stock_insufficient"
+				if err.Error() == "product not found" {
+					reason = "product_not_found"
+				}
+				
+				compensationErr := kc.compensationProducer.PublishStockDeductionFailed(
+					event.OrderID, productID, item.Quantity, reason)
+				if compensationErr != nil {
+					kc.logger.Error("Failed to publish compensation event", 
+						zap.Error(compensationErr))
+				}
+			}
+
 			return fmt.Errorf("stock deduction failed for product %s: %w", productID, err)
 		}
 
@@ -186,6 +206,12 @@ func (kc *KafkaConsumer) Stop() {
 	kc.cancel()
 }
 
+// 런타임에 보상 프로듀서 주입
+func (kc *KafkaConsumer) SetCompensationProducer(p CompensationProducer) {
+		kc.compensationProducer = p
+}
+
+
 // HealthCheck는 Kafka consumer의 상태를 확인합니다
 func (kc *KafkaConsumer) HealthCheck() error {
 	metadata, err := kc.consumer.GetMetadata(nil, false, 5000)
@@ -199,3 +225,4 @@ func (kc *KafkaConsumer) HealthCheck() error {
 
 	return nil
 }
+
