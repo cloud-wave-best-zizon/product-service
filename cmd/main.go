@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv" 
 	"github.com/cloud-wave-best-zizon/product-service/internal/events"
 	"github.com/cloud-wave-best-zizon/product-service/internal/handler"
 	"github.com/cloud-wave-best-zizon/product-service/internal/repository"
@@ -20,6 +21,10 @@ import (
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using environment variables")
+	}
+	
 	// Logger 초기화
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
@@ -29,6 +34,12 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to load config:", err)
 	}
+
+	logger.Info("Service configuration", 
+		zap.String("port", cfg.Port),
+		zap.String("kafka_brokers", cfg.KafkaBrokers),
+		zap.Bool("kafka_enabled", cfg.KafkaEnabled),
+		zap.String("dynamodb_endpoint", cfg.DynamoDBEndpoint))
 
 	// 모드 확인
 	if cfg.LocalMode && cfg.DynamoDBEndpoint == "" {

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
@@ -7,7 +5,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
-      - "22181:22181"
+      - "2181:2181"
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
@@ -24,23 +22,3 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
-
-  dynamodb-local:
-    image: amazon/dynamodb-local:latest
-    ports:
-      - "8000:8000"
-    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
-    volumes:
-      - dynamodb_data:/home/dynamodblocal/data
-
-  dynamodb-admin:
-    image: aaronshaf/dynamodb-admin:latest
-    ports:
-      - "8001:8001"
-    environment:
-      DYNAMO_ENDPOINT: http://dynamodb-local:8000
-    depends_on:
-      - dynamodb-local
-
-volumes:
-  dynamodb_data:

@@ -5,7 +5,7 @@ import (
 )
 
 type Config struct {
-	Port             string `envconfig:"PORT" default:"8080"`
+	Port             string `envconfig:"PORT" default:"8081"`
 	AWSRegion        string `envconfig:"AWS_REGION" default:"ap-northeast-2"`
 	ProductTableName string `envconfig:"PRODUCT_TABLE_NAME" default:"products-table"`
 	LogLevel         string `envconfig:"LOG_LEVEL" default:"info"`
