@@ -1,0 +1,158 @@
+# Pod Security Standards for ecommerce namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ecommerce
+  labels:
+    name: ecommerce
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
+---
+# Pod Disruption Budget for Product Service
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: product-service-pdb
+  namespace: ecommerce
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: product-service
+
+---
+# Pod Disruption Budget for Order Service
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: order-service-pdb
+  namespace: ecommerce
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: order-service
+
+---
+# Pod Disruption Budget for Kafka
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka-pdb
+  namespace: ecommerce
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: kafka
+
+---
+# Resource Quota for ecommerce namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ecommerce-quota
+  namespace: ecommerce
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    persistentvolumeclaims: "10"
+    services: "10"
+    secrets: "10"
+    configmaps: "10"
+    count/deployments.apps: "10"
+    count/statefulsets.apps: "5"
+
+---
+# Limit Range for pods in ecommerce namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: ecommerce-limit-range
+  namespace: ecommerce
+spec:
+  limits:
+  - default:
+      cpu: "500m"
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "200m"
+      memory: "256Mi"
+    type: Container
+  - max:
+      cpu: "2"
+      memory: "2Gi"
+    min:
+      cpu: "100m"
+      memory: "128Mi"
+    type: Container
+  - max:
+      storage: "100Gi"
+    min:
+      storage: "1Gi"
+    type: PersistentVolumeClaim
+
+---
+# Security Context Constraints for services
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-guidelines
+  namespace: ecommerce
+data:
+  guidelines.md: |
+    # Security Guidelines for Ecommerce Services
+    
+    ## Pod Security Context Requirements
+    All pods must include the following security context:
+    
+    ```yaml
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+    ```
+    
+    ## Container Security Context
+    All containers must include:
+    
+    ```yaml
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+    ```
+    
+    ## Image Security
+    - Use official images or build from trusted base images
+    - Regularly scan images for vulnerabilities
+    - Use specific image tags, not 'latest'
+    - Implement image signing verification
+    
+    ## Network Security
+    - All network policies are enforced
+    - Services communicate only through defined policies
+    - TLS encryption for all external communications
+    
+    ## Secrets Management
+    - Never hardcode secrets in images or configs
+    - Use Kubernetes Secrets or external secret managers
+    - Rotate secrets regularly
+    
+    ## Resource Limits
+    - All containers must have resource requests and limits
+    - Follow the principle of least privilege
+    - Monitor resource usage regularly
