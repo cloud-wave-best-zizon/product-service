@@ -29,11 +29,6 @@ func NewProductService(productRepo *repository.ProductRepository, logger *zap.Lo
 }
 
 func (s *ProductService) CreateProduct(ctx context.Context, req domain.CreateProductRequest) (*domain.Product, error) {
-	// 중복 체크
-	existing, _ := s.productRepo.GetProduct(ctx, req.ProductID)
-	if existing != nil {
-		return nil, ErrProductExists
-	}
 
 	product := &domain.Product{
 		ProductID: req.ProductID,
@@ -45,6 +40,9 @@ func (s *ProductService) CreateProduct(ctx context.Context, req domain.CreatePro
 	}
 
 	if err := s.productRepo.CreateProduct(ctx, product); err != nil {
+		if errors.Is(err, repository.ErrProductAlreadyExists) {
+			        return nil, ErrProductExists
+			}
 		s.logger.Error("Failed to save product",
 			zap.String("product_id", product.ProductID),
 			zap.Error(err))

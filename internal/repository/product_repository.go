@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	ErrProductNotFound   = errors.New("product not found")
-	ErrInsufficientStock = errors.New("insufficient stock")
+    ErrProductNotFound        = errors.New("product not found")
+    ErrInsufficientStock      = errors.New("insufficient stock")
+    ErrProductAlreadyExists   = errors.New("product already exists")
 )
 
 type ProductRepository struct {
@@ -89,7 +90,7 @@ func NewProductRepository(client *dynamodb.Client, tableName string) *ProductRep
 
 // CreateTableIfNotExists - DynamoDB Local 사용 시 테이블 생성
 func (r *ProductRepository) CreateTableIfNotExists(ctx context.Context) error {
-	if r.localMode {
+	if !r.localMode {
 		return nil
 	}
 
@@ -140,7 +141,7 @@ func (r *ProductRepository) CreateProduct(ctx context.Context, product *domain.P
 		defer r.mu.Unlock()
 
 		if _, exists := r.localStore[product.ProductID]; exists {
-			return errors.New("product already exists")
+			return ErrProductAlreadyExists
 		}
 
 		r.localStore[product.ProductID] = product
@@ -155,9 +156,14 @@ func (r *ProductRepository) CreateProduct(ctx context.Context, product *domain.P
 	_, err = r.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(r.tableName),
 		Item:      av,
+		ConditionExpression: aws.String("attribute_not_exists(product_id)"),
 	})
 
 	if err != nil {
+		var ccf *types.ConditionalCheckFailedException
+        if errors.As(err, &ccf) {
+    		return ErrProductAlreadyExists
+        }
 		return fmt.Errorf("failed to put item: %w", err)
 	}
 

@@ -59,8 +59,6 @@ func NewKafkaConsumer(brokers string, groupID string, productService *service.Pr
 		"fetch.wait.max.ms":        500,
 		"enable.partition.eof":     false,
 		"api.version.request":      true,
-		"go.delivery.reports":      false,
-		"go.events.channel.enable": true,
 	}
 
 	consumer, err := kafka.NewConsumer(config)
@@ -104,7 +102,7 @@ func (kc *KafkaConsumer) consume() {
 		default:
 			msg, err := kc.consumer.ReadMessage(1000 * time.Millisecond)
 			if err != nil {
-				if err.(kafka.Error).Code() == kafka.ErrTimedOut {
+				if ke, ok := err.(kafka.Error); ok && ke.Code() == kafka.ErrTimedOut {
 					continue
 				}
 				kc.logger.Error("Error reading message", zap.Error(err))
@@ -212,7 +210,7 @@ func (kc *KafkaConsumer) SetCompensationProducer(p CompensationProducer) {
 }
 
 
-// HealthCheck는 Kafka consumer의 상태를 확인합니다
+// HealthCheck는 Kafka consumer의 상태를 확인
 func (kc *KafkaConsumer) HealthCheck() error {
 	metadata, err := kc.consumer.GetMetadata(nil, false, 5000)
 	if err != nil {

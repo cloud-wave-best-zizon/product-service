@@ -5,19 +5,19 @@ import (
 )
 
 type Product struct {
-	ProductID string    `json:"product_id" dynamodbav:"product_id"`
-	Name      string    `json:"name" dynamodbav:"name"`
-	Stock     int       `json:"stock" dynamodbav:"stock"`
-	Price     float64   `json:"price" dynamodbav:"price"`
-	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" dynamodbav:"updated_at"`
+    ProductID string    `dynamodbav:"product_id" json:"product_id"`
+    Name      string    `dynamodbav:"name"       json:"name"`
+    Price     float64   `dynamodbav:"price"      json:"price"`
+    Stock     int       `dynamodbav:"stock"      json:"stock"`
+    CreatedAt time.Time `dynamodbav:"created_at" json:"created_at"`
+    UpdatedAt time.Time `dynamodbav:"updated_at" json:"updated_at"`
 }
 
 type CreateProductRequest struct {
-	ProductID string  `json:"product_id" binding:"required"`
-	Name      string  `json:"name" binding:"required"`
-	Stock     int     `json:"stock" binding:"required,min=0"`
-	Price     float64 `json:"price" binding:"required,min=0"`
+    ProductID string  `json:"product_id" binding:"required"`
+    Name      string  `json:"name"       binding:"required"`
+    Price     float64 `json:"price"      binding:"required"`
+    Stock     int     `json:"stock"      binding:"required"`
 }
 
 type DeductStockRequest struct {
@@ -25,10 +25,10 @@ type DeductStockRequest struct {
 }
 
 type ProductResponse struct {
-	ProductID string  `json:"product_id"`
-	Name      string  `json:"name"`
-	Stock     int     `json:"stock"`
-	Price     float64 `json:"price"`
+    ProductID string  `json:"product_id"`
+    Name      string  `json:"name"`
+    Price     float64 `json:"price"`
+    Stock     int     `json:"stock"`
 }
 
 type StockDeductionResponse struct {
