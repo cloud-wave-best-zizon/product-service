@@ -1,45 +1,27 @@
-# Build stage
+# product-service/Dockerfile
 FROM golang:1.21-alpine AS builder
 
-# Install git and ca-certificates (needed for Go modules)
-RUN apk update && apk add --no-cache git ca-certificates
-
-# Set working directory
 WORKDIR /app
 
-# Copy go mod files
+# 의존성 파일 복사
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
+# 소스 코드 복사
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o main cmd/main.go
+# 빌드
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/main.go
 
-# Final stage
-FROM alpine:latest
+# 최종 이미지
+FROM alpine:3.18
 
-# Install ca-certificates for HTTPS calls
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates
 
-# Create app directory
 WORKDIR /root/
 
-# Copy the binary from builder stage
+# 빌드된 바이너리 복사
 COPY --from=builder /app/main .
 
-# Set timezone to Asia/Seoul
-ENV TZ=Asia/Seoul
-
-# Expose port
-EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/health || exit 1
-
-# Run the application
+# 실행
 CMD ["./main"]
