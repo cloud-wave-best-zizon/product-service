@@ -75,22 +75,19 @@ func main() {
 	// Kafka Consumer 초기화 및 시작
 	var kafkaConsumer *events.KafkaConsumer
 	if cfg.KafkaEnabled {
-		kafkaConsumer, err = events.NewKafkaConsumer(
+		kafkaConsumer := events.NewKafkaConsumer(
 			cfg.KafkaBrokers,
-			cfg.KafkaGroupID,
 			productService,
 			logger,
 		)
-		if err != nil {
-			logger.Error("Failed to create Kafka consumer", zap.Error(err))
-			// Kafka 오류는 치명적이지 않게 처리 (선택적)
-		} else {
-			if err := kafkaConsumer.Start(); err != nil {
-				logger.Error("Failed to start Kafka consumer", zap.Error(err))
-			} else {
-				logger.Info("Kafka consumer started successfully")
-			}
-		}
+		defer kafkaConsumer.Close()
+		
+		// Consumer 시작 (고루틴)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		
+		go kafkaConsumer.StartConsuming(ctx)
+		logger.Info("Kafka consumer started")
 	}
 
 	// Gin Router 설정
