@@ -1,0 +1,39 @@
+stages:
+  - build
+  - push
+  - update-manifest
+
+variables:
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+
+build-image:
+  stage: build
+  only:
+    - main
+  script:
+    - echo "🔧 Docker 이미지 빌드 중..."
+    - docker build -t $AWS_ECR_REPO:$IMAGE_TAG .
+
+push-image:
+  stage: push
+  only:
+    - main
+  script:
+    - echo "🔐 AWS ECR 로그인 중..."
+    - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ECR_REPO
+    - echo "📤 ECR에 이미지 푸시 중..."
+    - docker push $AWS_ECR_REPO:$IMAGE_TAG
+
+update-manifest:
+  stage: update-manifest
+  only:
+    - main
+  script:
+    - echo "📝 manifest 레포 클론 및 이미지 태그 수정 중..."
+    - git clone git@localhost:your-user/manifest.git
+    - cd manifest-repo/product-service
+    - sed -i "s|image:.*|image: $AWS_ECR_REPO:$IMAGE_TAG|" deployment.yaml
+    - git config --global user.email "ci@example.com"
+    - git config --global user.name "CI Bot"
+    - git commit -am "chore: update image to $IMAGE_TAG"
+    - git push origin main
