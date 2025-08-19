@@ -1,20 +1,25 @@
 stages:
-  - build
-  - push
+  - build-and-push
   - update-manifest
 
 variables:
   IMAGE_TAG: $CI_COMMIT_SHORT_SHA
 
-build-image:
-  stage: build
+build-and-push:
+  stage: build-and-push
+  image: docker:20.10.16
+  services:
+    - name: docker:20.10.16-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apk add --no-cache python3 py3-pip
+    - pip3 install awscli
   script:
     - echo "🔧 Docker 이미지 빌드 중..."
     - docker build -t $AWS_ECR_REPO:$IMAGE_TAG .
-
-push-image:
-  stage: push
-  script:
     - echo "🔐 AWS ECR 로그인 중..."
     - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ECR_REPO
     - echo "📤 ECR에 이미지 푸시 중..."
@@ -22,16 +27,19 @@ push-image:
 
 update-manifest:
   stage: update-manifest
+  image: alpine:latest
   only:
     - main
-  script:
-    - echo "📝 manifest 레포 클론 및 이미지 태그 수정 중..."
-    - git clone git@localhost:root/manifest.git
-    - cd manifest/product-service
-    - >
-      sed -i "s|image:.*|image: ${AWS_ECR_REPO}:${IMAGE_TAG}|" deployment.yaml
+  before_script:
+    - apk add --no-cache git openssh
     - git config --global user.email "ci@example.com"
     - git config --global user.name "CI Bot"
+  script:
+    - echo "📝 manifest 레포 클론 및 이미지 태그 수정 중..."
+    - git clone http://$CI_GITLAB_USERNAME:$CI_GITLAB_TOKEN@10.0.11.177/root/manifest.git
+    - cd manifest/order-service
+    - >
+      sed -i "s|image:.*|image: ${AWS_ECR_REPO}:${IMAGE_TAG}|" deployment.yaml
     - git add deployment.yaml
     - |
       if git diff --cached --quiet; then
