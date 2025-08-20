@@ -21,7 +21,7 @@ code-analysis:
     - echo "🔍 [SonarQube] 정적 분석을 시작합니다..."
     - |
       sonar-scanner \
-        -Dsonar.projectKey=order-service \
+        -Dsonar.projectKey=product-service \
         -Dsonar.sources=. \
         -Dsonar.host.url=http://$HOST_URL:9000 \
         -Dsonar.token=$SONAR_TOKEN
@@ -49,6 +49,7 @@ code-analysis:
           *📈 Coverage*: $coverage% | *🔁 Duplications*: $duplications%\"
         }" \
         $SLACK_WEBHOOK_URL
+        
 build-and-push:
   stage: build-and-push
   image: docker:20.10.16
