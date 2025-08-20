@@ -30,7 +30,7 @@ code-analysis:
     # SonarQube API 호출하여 메트릭 가져오기
     - echo "📊 [SonarQube] 메트릭 정보 가져오는 중..."
     - |
-      response=$(curl -s -u "$SONAR_TOKEN:" "http://$HOST_URL:9000/api/measures/component?component=order-service&metricKeys=bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,security_hotspots")
+      response=$(curl -s -u "$SONAR_TOKEN:" "http://$HOST_URL:9000/api/measures/component?component=product-service&metricKeys=bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,security_hotspots")
       bugs=$(echo $response | jq -r '.component.measures[] | select(.metric=="bugs") | .value')
       vulnerabilities=$(echo $response | jq -r '.component.measures[] | select(.metric=="vulnerabilities") | .value')
       code_smells=$(echo $response | jq -r '.component.measures[] | select(.metric=="code_smells") | .value')
@@ -43,13 +43,13 @@ code-analysis:
     - |
       curl -X POST -H 'Content-type: application/json' \
         --data "{
-          \"text\": \"*🔍 SonarQube 분석 결과 for order-service*\n\n\
+          \"text\": \"*🔍 SonarQube 분석 결과 for product-service*\n\n\
           *🐞 Bugs*: $bugs | *🛡 Vulnerabilities*: $vulnerabilities\n\
           *🌀 Code Smells*: $code_smells | *🔥 Hotspots*: $hotspots\n\
           *📈 Coverage*: $coverage% | *🔁 Duplications*: $duplications%\"
         }" \
         $SLACK_WEBHOOK_URL
-        
+
 build-and-push:
   stage: build-and-push
   image: docker:20.10.16
