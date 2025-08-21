@@ -9,5 +9,7 @@ FROM alpine:3.18
 RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 COPY --from=builder /app/main .
-EXPOSE 8080
+
+# HTTP와 HTTPS 포트 모두 노출
+EXPOSE 8080 8443
 CMD ["./main"]

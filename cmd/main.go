@@ -16,6 +16,7 @@ import (
 	"github.com/cloud-wave-best-zizon/product-service/internal/service"
 	"github.com/cloud-wave-best-zizon/product-service/pkg/config"
 	"github.com/cloud-wave-best-zizon/product-service/pkg/middleware"
+	pkgtls "github.com/cloud-wave-best-zizon/order-service/pkg/tls"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -75,7 +76,7 @@ func main() {
 	// Kafka Consumer 초기화 및 시작
 	var kafkaConsumer *events.KafkaConsumer
 	if cfg.KafkaEnabled {
-		kafkaConsumer := events.NewKafkaConsumer(
+		kafkaConsumer = events.NewKafkaConsumer(
 			cfg.KafkaBrokers,
 			productService,
 			logger,
@@ -160,6 +161,53 @@ func main() {
 			logger.Fatal("Failed to start server", zap.Error(err))
 		}
 	}()
+
+    // TLS 설정 로드
+    tlsConfig := &pkgtls.TLSConfig{}
+    if err := envconfig.Process("", tlsConfig); err != nil {
+        logger.Fatal("Failed to load TLS config", zap.Error(err))
+    }
+
+    // Server 설정
+    srv := &http.Server{
+        Addr:    ":" + cfg.Port,
+        Handler: router,
+    }
+
+    // TLS 설정 적용
+    var tlsConfigMutex sync.RWMutex
+    if tlsConfig.Enabled {
+        tlsCfg, err := pkgtls.LoadTLSConfig(tlsConfig, logger)
+        if err != nil {
+            logger.Fatal("Failed to load TLS configuration", zap.Error(err))
+        }
+        srv.TLSConfig = tlsCfg
+
+        // 인증서 자동 리로드
+        go pkgtls.WatchCertificates(tlsConfig, func(newCfg *tls.Config) error {
+            tlsConfigMutex.Lock()
+            defer tlsConfigMutex.Unlock()
+            srv.TLSConfig = newCfg
+            return nil
+        }, logger)
+    }
+
+    go func() {
+        logger.Info("Starting server",
+            zap.String("port", cfg.Port),
+            zap.Bool("tls_enabled", tlsConfig.Enabled))
+        
+        var err error
+        if tlsConfig.Enabled {
+            err = srv.ListenAndServeTLS("", "") // 인증서는 TLSConfig에서 로드
+        } else {
+            err = srv.ListenAndServe()
+        }
+        
+        if err != nil && err != http.ErrServerClosed {
+            logger.Fatal("Failed to start server", zap.Error(err))
+        }
+    }()
 
 	// Graceful Shutdown
 	quit := make(chan os.Signal, 1)

@@ -89,7 +89,7 @@ func (c *KafkaConsumer) StartConsuming(ctx context.Context) {
             
             // 각 상품의 재고 차감
             for _, item := range event.Items {
-                productID := fmt.Sprintf("PROD%03d", item.ProductID)
+                productID := item.ProductID  // string으로 수정됨
                 
                 result, err := c.productService.DeductStock(ctx, productID, item.Quantity)
                 if err != nil {
