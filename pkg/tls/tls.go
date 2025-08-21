@@ -4,7 +4,7 @@ import (
     "crypto/tls"
     "crypto/x509"
     "fmt"
-    "io/ioutil"
+    "os"
     "time"
     
     "go.uber.org/zap"
@@ -33,9 +33,8 @@ func LoadTLSConfig(cfg *TLSConfig, logger *zap.Logger) (*tls.Config, error) {
         MinVersion:   tls.VersionTLS12,
     }
     
-    // mTLS 설정 (클라이언트 인증)
     if cfg.ClientAuth && cfg.CAPath != "" {
-        caCert, err := ioutil.ReadFile(cfg.CAPath)
+        caCert, err := os.ReadFile(cfg.CAPath)
         if err != nil {
             return nil, fmt.Errorf("failed to read CA cert: %w", err)
         }
@@ -54,7 +53,6 @@ func LoadTLSConfig(cfg *TLSConfig, logger *zap.Logger) (*tls.Config, error) {
     return tlsConfig, nil
 }
 
-// 인증서 자동 리로드를 위한 Watcher
 func WatchCertificates(cfg *TLSConfig, reloadFunc func(*tls.Config) error, logger *zap.Logger) {
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()

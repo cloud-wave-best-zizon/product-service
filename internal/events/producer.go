@@ -4,7 +4,6 @@ import (
     "context"
     "encoding/json"
     "time"
-    
     "github.com/segmentio/kafka-go"
     "go.uber.org/zap"
 )
