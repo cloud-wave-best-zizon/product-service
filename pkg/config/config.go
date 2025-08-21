@@ -10,7 +10,8 @@ type Config struct {
 	ProductTableName string `envconfig:"PRODUCT_TABLE_NAME" default:"products-table"`
 	LogLevel         string `envconfig:"LOG_LEVEL" default:"info"`
 	LocalMode        bool   `envconfig:"LOCAL_MODE" default:"false"`
-	DynamoDBEndpoint string `envconfig:"DYNAMODB_ENDPOINT" default:""` // DynamoDB Local 엔드포인트
+	DynamoDBEndpoint string `envconfig:"DYNAMODB_ENDPOINT" default:""`
+	TLSEnabled       bool   `envconfig:"TLS_ENABLED" default:"false"`
 	
 	// Kafka 설정
 	KafkaBrokers   string `envconfig:"KAFKA_BROKERS" default:"localhost:9092"`
