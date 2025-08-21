@@ -1,0 +1,95 @@
+stages:
+  - code-analysis
+  - build-and-push
+  - update-manifest
+
+variables:
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  HOST_URL: 10.0.11.177
+
+code-analysis:
+  stage: code-analysis
+  image: bellsoft/liberica-openjdk-alpine:17
+
+  before_script:
+    - apk add --no-cache curl unzip jq
+    - curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006.zip
+    - unzip sonar-scanner.zip && mv sonar-scanner-* sonar-scanner
+    - export PATH="$PWD/sonar-scanner/bin:$PATH"
+
+  script:
+    - echo "🔍 [SonarQube] 정적 분석을 시작합니다..."
+    - |
+      sonar-scanner \
+        -Dsonar.projectKey=product-service \
+        -Dsonar.sources=. \
+        -Dsonar.host.url=http://$HOST_URL:9000 \
+        -Dsonar.token=$SONAR_TOKEN
+    - echo "✅ [SonarQube] 정적 분석 완료"
+
+    # SonarQube API 호출하여 메트릭 가져오기
+    - echo "📊 [SonarQube] 메트릭 정보 가져오는 중..."
+    - |
+      response=$(curl -s -u "$SONAR_TOKEN:" "http://$HOST_URL:9000/api/measures/component?component=product-service&metricKeys=bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,security_hotspots")
+      bugs=$(echo $response | jq -r '.component.measures[] | select(.metric=="bugs") | .value')
+      vulnerabilities=$(echo $response | jq -r '.component.measures[] | select(.metric=="vulnerabilities") | .value')
+      code_smells=$(echo $response | jq -r '.component.measures[] | select(.metric=="code_smells") | .value')
+      coverage=$(echo $response | jq -r '.component.measures[] | select(.metric=="coverage") | .value')
+      duplications=$(echo $response | jq -r '.component.measures[] | select(.metric=="duplicated_lines_density") | .value')
+      hotspots=$(echo $response | jq -r '.component.measures[] | select(.metric=="security_hotspots") | .value')
+
+    # Slack 메시지 전송
+    - echo "📣 [Slack] SonarQube 결과 전송 중..."
+    - |
+      curl -X POST -H 'Content-type: application/json' \
+        --data "{
+          \"text\": \"*🔍 SonarQube 분석 결과 for product-service*\n\n\
+          *🐞 Bugs*: $bugs | *🛡 Vulnerabilities*: $vulnerabilities\n\
+          *🌀 Code Smells*: $code_smells | *🔥 Hotspots*: $hotspots\n\
+          *📈 Coverage*: $coverage% | *🔁 Duplications*: $duplications%\"
+        }" \
+        $SLACK_WEBHOOK_URL
+
+build-and-push:
+  stage: build-and-push
+  image: docker:20.10.16
+  services:
+    - name: docker:20.10.16-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apk add --no-cache python3 py3-pip
+    - pip3 install awscli
+  script:
+    - echo "🔧 Docker 이미지 빌드 중..."
+    - docker build -t $AWS_ECR_REPO:$IMAGE_TAG .
+    - echo "🔐 AWS ECR 로그인 중..."
+    - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ECR_REPO
+    - echo "📤 ECR에 이미지 푸시 중..."
+    - docker push $AWS_ECR_REPO:$IMAGE_TAG
+
+update-manifest:
+  stage: update-manifest
+  image: alpine:latest
+  only:
+    - main
+  before_script:
+    - apk add --no-cache git openssh
+    - git config --global user.email "ci@example.com"
+    - git config --global user.name "CI Bot"
+  script:
+    - echo "📝 manifest 레포 클론 및 이미지 태그 수정 중..."
+    - git clone http://$CI_GITLAB_USERNAME:$CI_GITLAB_TOKEN@$HOST_URL/root/manifest.git
+    - cd manifest/product-service
+    - >
+      sed -i "s|image:.*|image: ${AWS_ECR_REPO}:${IMAGE_TAG}|" deployment.yaml
+    - git add deployment.yaml
+    - |
+      if git diff --cached --quiet; then
+        echo "🔍 변경사항 없음 - 커밋 생략"
+      else
+        git commit -m "chore: update image to ${IMAGE_TAG}"
+        git push origin main
+      fi
