@@ -4,7 +4,8 @@ import (
     "context"
     "encoding/json"
     "fmt"
-    
+    "strconv"
+
     "github.com/segmentio/kafka-go"
     "github.com/cloud-wave-best-zizon/product-service/internal/service"
     "go.uber.org/zap"
@@ -89,19 +90,20 @@ func (c *KafkaConsumer) StartConsuming(ctx context.Context) {
             
             // 각 상품의 재고 차감
             for _, item := range event.Items {
-                productID := item.ProductID  // string으로 수정됨
+                // int를 string으로 변환!
+                productIDStr := strconv.Itoa(item.ProductID)
                 
-                result, err := c.productService.DeductStock(ctx, productID, item.Quantity)
+                result, err := c.productService.DeductStock(ctx, productIDStr, item.Quantity)
                 if err != nil {
                     c.logger.Error("Failed to deduct stock",
-                        zap.String("product_id", productID),
+                        zap.String("product_id", productIDStr),  // 변환된 string 사용
                         zap.Int("quantity", item.Quantity),
                         zap.Error(err))
                     continue
                 }
                 
                 c.logger.Info("Stock deducted successfully",
-                    zap.String("product_id", productID),
+                    zap.String("product_id", productIDStr),  // 변환된 string 사용
                     zap.Int("previous_stock", result.PreviousStock),
                     zap.Int("new_stock", result.NewStock),
                     zap.Int("deducted", result.Deducted))

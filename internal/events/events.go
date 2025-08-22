@@ -17,7 +17,7 @@ type OrderCreatedEvent struct {
 }
 
 type OrderItem struct {
-    ProductID   string  `json:"product_id"`   
+    ProductID   int  `json:"product_id"`   
     ProductName string  `json:"product_name"` 
     Quantity    int     `json:"quantity"`     
     Price       float64 `json:"price"`        
